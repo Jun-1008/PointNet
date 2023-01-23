@@ -33,13 +33,15 @@ class MaxPool(nn.Module):
         # 1dは列、2dは行
 
     def forward(self, input_data):
-        out = input_data.view(-1, self.num_channels, self.num_points) # 三次元
+        out = input_data.view(-1, self.num_channels, self.num_points)
         # num_channelsはMaxPoolクラスの入力で1024になっている
-        # この時点でのoutのsize()は( , 1024, 93)
+        # スタートのinput_data([930, 3])、この層に入る直前に([930, 1024])
+        # out.size() ([10 , 1024, 93])
         out = self.main(out)
-        # maxpoolしたことにより( , 1024, 1)?
+        # maxpoolしたことにより(10 , 1024, 1)。
+        # maxpoolの結果、1つのcsvファイルに対する特徴量が1024パターンの最大値になった？
         out = out.view(-1, self.num_channels)
-        # ( , 1024)
+        # ([10, 1024])
         return out
 
 
@@ -53,24 +55,26 @@ class InputTNet(nn.Module):
             NonLinear(3, 64), 
             # 3はおそらくxyz。ここからスタート.input_data([930, 3])
             NonLinear(64, 128),
-            NonLinear(128, 1024),
+            NonLinear(128, 1024), # ([930, 1024])
             MaxPool(1024, self.num_points),
-            # NonLinear(128, 128),
-            # MaxPool(128, self.num_points),
+            # view ([10 , 1024, 93])
+            # maxpool1d ([10, 1024, 1])
+            # view out ([10, 1024])
             NonLinear(1024, 512),
             NonLinear(512, 256),
-            nn.Linear(256, 9)
+            nn.Linear(256, 9) # ([10, 9])
         )
-        # 最後は(9x1)サイズのテンソルになっている。
 
     # shape of input_data is (batchsize x num_points, channel)
     def forward(self, input_data):
         # input_data ([930, 3])
         matrix = self.main(input_data).view(-1, 3, 3)
-        # 
+        # ([10, 3, 3])
         out = torch.matmul(input_data.view(-1, self.num_points, 3), matrix)
         # 入力データと得られたアフィン行列の行列積を計算
-        out = out.view(-1, 3)
+        # torch.matmul(([10, 93, 3]), ([10, 3, 3]))
+        # out # ([10, 93, 3])
+        out = out.view(-1, 3) # ([930, 3])
         return out
 
 
@@ -81,22 +85,28 @@ class FeatureTNet(nn.Module):
         self.num_points = num_points
 
         self.main = nn.Sequential(
+            # input ([930, 64])?? input_data([930, 3])では??
             NonLinear(64, 64),
             NonLinear(64, 128),
-            NonLinear(128, 1024),
+            NonLinear(128, 1024), # ([930, 1024]) Input_TNetと同じ
             MaxPool(1024, self.num_points),
-            # NonLinear(128, 128),
-            # MaxPool(128, self.num_points),
+            # view ([10 , 1024, 93])
+            # maxpool1d ([10, 1024, 1])
+            # view out ([10, 1024])
             NonLinear(1024, 512),
             NonLinear(512, 256),
-            nn.Linear(256, 4096)
+            nn.Linear(256, 4096) # ([10, 4096])
         )
 
     # shape of input_data is (batchsize x num_points, channel)
-    def forward(self, input_data):
-        matrix = self.main(input_data).view(-1, 64, 64)
+    def forward(self, input_data): # input_data([930, 3])??
+        matrix = self.main(input_data).view(-1, 64, 64) 
+        # matrix ([10, 64, 64])
+        # input_data ([930, 64])
         out = torch.matmul(input_data.view(-1, self.num_points, 64), matrix)
+        # ([10, 93, 64])
         out = out.view(-1, 64)
+        # ([930, 64])
         return out
 
 
@@ -109,22 +119,23 @@ class PointNet(nn.Module):
 
         self.main = nn.Sequential(
             InputTNet(self.num_points), 
-            # InputTnetの中にも非線形変換やMakPooling, 順伝搬がある
-            # out = out.view(-1, 3)の形で出力
+            # InputTnetの中にも非線形変換やMaxPooling, 順伝搬がある
+            # out ([930, 3])
             NonLinear(3, 64),
-            NonLinear(64, 64),
+            NonLinear(64, 64), # ([930, 64])
             FeatureTNet(self.num_points),
-            # FeatureTNetの入力は64次元で固定
-            # out = out.view(-1, 64)の形で出力
+            # FeatureTNetの入力層 (64, 64)
+            # out ([930, 64])
             NonLinear(64, 64),
             NonLinear(64, 128),
-            NonLinear(128, 1024),
+            NonLinear(128, 1024), # ([930, 1024])同じ形
             MaxPool(1024, self.num_points),
+            # out ([10, 1024])
             NonLinear(1024, 512),
             nn.Dropout(p = 0.3),
             NonLinear(512, 256),
             nn.Dropout(p = 0.3),
-            NonLinear(256, self.num_labels),
+            NonLinear(256, self.num_labels), # ([10, 1])
             )
 
     def forward(self, input_data):

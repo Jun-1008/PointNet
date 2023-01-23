@@ -45,8 +45,7 @@ def main():
         output = pointnet(input_data)
         # output = pointnet.forward(input_data)　何故この形でない？
         # 基底クラスのcallの中に、y = self.forward(x) の形で入ってる？
-        # 開始のInput_Tnetの入力層はNonLinear(3, 64) 
-        # output:shape ([10, 1])
+        # output ([10, 1])
 
         output = nn.Sigmoid()(output)
         # シグモイド。(0, 0.5)で点対象となるS字曲線
